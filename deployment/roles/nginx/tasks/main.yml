@@ -1,0 +1,68 @@
+---
+- group: name=nginx
+
+- user: name=nginx groups=nginx append=yes
+
+- name: Create remote tmp
+  ansible.builtin.file:
+    path: /home/nginx/.ansible/tmp
+    state: directory
+    mode: 0755
+    owner: nginx
+    group: nginx
+
+- ansible.builtin.file:
+    path: "{{ nginx_conf | dirname }}"
+    state: directory
+    mode: 0755
+    owner: nginx
+    group: nginx
+
+- ansible.builtin.apt:
+    name: nginx
+    state: latest
+
+- file: path={{ nginx_include_dir }} state=directory mode=0755
+  become: yes
+  become_user: nginx
+  notify: reload nginx
+
+- name: copy logrotate script
+  copy: src=logrotate
+        dest=/etc/logrotate.d/nginx
+        mode=644
+
+- ansible.builtin.template:
+    src: nginx.conf
+    dest: "{{ nginx_conf }}"
+    owner: nginx
+    group: nginx
+  notify: reload nginx
+
+- name: generate Diffie Hellman parameters
+  command: "openssl dhparam -out {{ diffiehellman }} 2048"
+  args:
+    creates: "{{ diffiehellman }}"
+  become: yes
+  become_user: nginx
+  notify: reload nginx
+
+- name: Create systemd override directory
+  ansible.builtin.file:
+    path: "{{ nginx_systemd_dir }}"
+    state: directory
+    mode: 0755
+
+- ansible.builtin.template:
+    src: nginx.systemd
+    dest: "{{ nginx_systemd_service }}"
+  notify: reload nginx
+
+- name: enable nginx
+  ansible.builtin.systemd:
+    name:          nginx
+    enabled:       yes
+    daemon_reload: yes
+
+- file: path={{ nginx_log_dir }} group=nginx owner=nginx state=directory mode=0755
+  notify: reload nginx
